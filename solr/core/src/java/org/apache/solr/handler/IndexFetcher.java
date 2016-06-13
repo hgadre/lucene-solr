@@ -82,6 +82,7 @@ import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.DirectoryFactory.DirContext;
 import org.apache.solr.core.IndexDeletionPolicyWrapper;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.core.SolrSnapshotMetaDataManager;
 import org.apache.solr.handler.ReplicationHandler.*;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
@@ -468,9 +469,16 @@ public class IndexFetcher {
                 // let the system know we are changing dir's and the old one
                 // may be closed
                 if (indexDir != null) {
-                  LOG.info("removing old index directory " + indexDir);
+                  SolrSnapshotMetaDataManager snapshotsMgr = solrCore.getSnapshotMetaDataManager();
+                  boolean snapshotsExist = snapshotsMgr.snapshotsExistInIndexDir(indexDirPath);
                   solrCore.getDirectoryFactory().doneWithDirectory(indexDir);
-                  solrCore.getDirectoryFactory().remove(indexDir);
+                  // Delete the old index directory only if no snapshot exists in that directory.
+                  if(!snapshotsExist) {
+                    LOG.info("removing old index directory " + indexDir);
+                    solrCore.getDirectoryFactory().remove(indexDir);
+                  } else {
+                    snapshotsMgr.deleteNonSnapshotIndexFiles(indexDir);
+                  }
                 }
               }
 

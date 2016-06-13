@@ -156,6 +156,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
   private final Map<String,UpdateRequestProcessorChain> updateProcessorChains;
   private final Map<String, SolrInfoMBean> infoRegistry;
   private final IndexDeletionPolicyWrapper solrDelPolicy;
+  private final SolrSnapshotMetaDataManager snapshotMgr;
   private final DirectoryFactory directoryFactory;
   private IndexReaderFactory indexReaderFactory;
   private final Codec codec;
@@ -386,7 +387,19 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
     } else {
       delPolicy = new SolrDeletionPolicy();
     }
-    return new IndexDeletionPolicyWrapper(delPolicy);
+
+    return new IndexDeletionPolicyWrapper(delPolicy, snapshotMgr);
+  }
+
+  private SolrSnapshotMetaDataManager initSnapshotMetaDataManager() {
+    try {
+      String dirName = getDataDir() + "snapshots_metadata/";
+      Directory snapshotDir = directoryFactory.get(dirName, DirContext.DEFAULT,
+           getSolrConfig().indexConfig.lockType);
+      return new SolrSnapshotMetaDataManager(snapshotDir);
+    } catch (IOException e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   private void initListeners() {
@@ -711,6 +724,7 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
 
       initListeners();
 
+      this.snapshotMgr = initSnapshotMetaDataManager();
       this.solrDelPolicy = initDeletionPolicy(delPolicy);
 
       this.codec = initCodec(solrConfig, this.schema);
@@ -1209,6 +1223,17 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
       infoRegistry.clear();
     } catch (Throwable e) {
       SolrException.log(log, e);
+      if (e instanceof Error) {
+        throw (Error) e;
+      }
+    }
+
+    // Close the snapshots meta-data directory.
+    Directory snapshotsDir = snapshotMgr.getSnapshotsDir();
+    try {
+      this.directoryFactory.release(snapshotsDir);
+    }  catch (Throwable e) {
+      SolrException.log(log,e);
       if (e instanceof Error) {
         throw (Error) e;
       }
@@ -2313,6 +2338,14 @@ public final class SolrCore implements SolrInfoMBean, Closeable {
 
   public IndexDeletionPolicyWrapper getDeletionPolicy(){
     return solrDelPolicy;
+  }
+
+  /**
+   * @return A reference of {@linkplain SolrSnapshotMetaDataManager}
+   *         managing the persistent snapshots for this Solr core.
+   */
+  public SolrSnapshotMetaDataManager getSnapshotMetaDataManager() {
+    return snapshotMgr;
   }
 
   public ReentrantLock getRuleExpiryLock() {

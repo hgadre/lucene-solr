@@ -27,12 +27,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Future;
 
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.IOUtils;
@@ -40,6 +42,7 @@ import org.apache.solr.cloud.CloudDescriptor;
 import org.apache.solr.cloud.SyncStrategy;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.DocRouter;
@@ -58,8 +61,11 @@ import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.core.SolrSnapshotMetaDataManager;
+import org.apache.solr.core.SolrSnapshotMetaDataManager.SnapshotMetaData;
 import org.apache.solr.core.SolrResourceLoader;
 import org.apache.solr.core.backup.repository.BackupRepository;
+import org.apache.solr.core.DirectoryFactory.DirContext;
 import org.apache.solr.handler.RestoreCore;
 import org.apache.solr.handler.SnapShooter;
 import org.apache.solr.request.LocalSolrQueryRequest;
@@ -875,8 +881,12 @@ enum CoreAdminOperation {
         }
       }
 
+      // An optional parameter to describe the snapshot to be backed-up. If this
+      // parameter is not supplied, the latest index commit is backed-up.
+      String commitName = params.get(CoreAdminParams.COMMIT_NAME);
+
       try (SolrCore core = callInfo.handler.coreContainer.getCore(cname)) {
-        SnapShooter snapShooter = new SnapShooter(repository, core, location, name);
+        SnapShooter snapShooter = new SnapShooter(repository, core, location, name, commitName);
         // validateCreateSnapshot will create parent dirs instead of throw; that choice is dubious.
         //  But we want to throw. One reason is that
         //  this dir really should, in fact must, already exist here if triggered via a collection backup on a shared
@@ -937,7 +947,92 @@ enum CoreAdminOperation {
         }
       }
     }
+  },
+  CREATESNAPSHOT_OP(CREATESNAPSHOT) {
+    @Override
+    public void call(CallInfo callInfo) throws Exception {
+      CoreContainer cc = callInfo.handler.getCoreContainer();
+      final SolrParams params = callInfo.req.getParams();
+
+      String commitName = params.required().get(CoreAdminParams.COMMIT_NAME);
+      String cname = params.required().get(CoreAdminParams.CORE);
+      try (SolrCore core = cc.getCore(cname)) {
+        if (core == null) {
+          throw new SolrException(ErrorCode.SERVER_ERROR, "Unable to locate core " + cname);
+        }
+        if (core.getDeletionPolicy().getLatestCommit() == null) {
+          throw new SolrException(ErrorCode.SERVER_ERROR, "Could not find latest commit. Please ensure to execute a hard commit");
+        }
+
+        String indexDirPath = core.getIndexDir();
+        IndexCommit ic = core.getDeletionPolicy().getLatestCommit();
+        SolrSnapshotMetaDataManager mgr = core.getSnapshotMetaDataManager();
+        mgr.snapshot(commitName, indexDirPath, ic.getGeneration());
+      }
+    }
+  },
+  DELETESNAPSHOT_OP(DELETESNAPSHOT) {
+    @Override
+    public void call(CallInfo callInfo) throws Exception {
+      CoreContainer cc = callInfo.handler.getCoreContainer();
+      final SolrParams params = callInfo.req.getParams();
+
+      String commitName = params.required().get(CoreAdminParams.COMMIT_NAME);
+      String cname = params.required().get(CoreAdminParams.CORE);
+      try (SolrCore core = cc.getCore(cname)) {
+        if (core == null) {
+          throw new SolrException(ErrorCode.SERVER_ERROR, "Unable to locate core " + cname);
+        }
+
+        SolrSnapshotMetaDataManager mgr = core.getSnapshotMetaDataManager();
+        Optional<SnapshotMetaData> metadata = mgr.release(commitName);
+        if (metadata.isPresent()) {
+          long gen = metadata.get().getGenerationNumber();
+          String indexDirPath = metadata.get().getIndexDirPath();
+          // If the directory storing the snapshot is not the same as the *current* core
+          // index directory, then delete the files corresponding to this snapshot.
+          // Otherwise we leave the index files related to snapshot as is (assuming the
+          // underlying Solr IndexDeletionPolicy will clean them up appropriately).
+          if (!indexDirPath.equals(core.getIndexDir())) {
+            Directory d = core.getDirectoryFactory().get(indexDirPath, DirContext.DEFAULT, DirectoryFactory.LOCK_TYPE_NONE);
+            try {
+              mgr.deleteSnapshotIndexFiles(d, gen);
+            } finally {
+              core.getDirectoryFactory().release(d);
+            }
+          }
+        }
+      }
+    }
+  },
+  LISTSNAPSHOT_OP(LISTSNAPSHOTS) {
+    @Override
+    public void call(CallInfo callInfo) throws Exception {
+      CoreContainer cc = callInfo.handler.getCoreContainer();
+      final SolrParams params = callInfo.req.getParams();
+
+      String cname = params.required().get(CoreAdminParams.CORE);
+      try ( SolrCore core = cc.getCore(cname) ) {
+        if (core == null) {
+          throw new SolrException(ErrorCode.SERVER_ERROR, "Unable to locate core " + cname);
+        }
+
+        SolrSnapshotMetaDataManager mgr = core.getSnapshotMetaDataManager();
+        NamedList result = new NamedList();
+        for (String name : mgr.listSnapshots()) {
+          Optional<SnapshotMetaData> metadata = mgr.getSnapshotMetaData(name);
+          if ( metadata.isPresent() ) {
+            NamedList<String> props = new NamedList<>();
+            props.add("generation", String.valueOf(metadata.get().getGenerationNumber()));
+            props.add("indexDirPath", metadata.get().getIndexDirPath());
+            result.add(name, props);
+          }
+        }
+        callInfo.rsp.add("snapshots", result);
+      }
+    }
   };
+
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   final CoreAdminParams.CoreAdminAction action;

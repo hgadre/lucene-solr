@@ -108,6 +108,8 @@ public abstract class CoreAdminParams
   // Node to create a replica on for ADDREPLICA at least.
   public static final String NODE = "node";
 
+  public static final String COMMIT_NAME = "commitName";
+
   public enum CoreAdminAction {
     STATUS(true),
     UNLOAD,
@@ -131,7 +133,10 @@ public abstract class CoreAdminParams
     INVOKE,
     //Internal APIs to backup and restore a core
     BACKUPCORE,
-    RESTORECORE;
+    RESTORECORE,
+    CREATESNAPSHOT,
+    DELETESNAPSHOT,
+    LISTSNAPSHOTS;
 
     public final boolean isRead;
 

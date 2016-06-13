@@ -32,6 +32,7 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.backup.repository.BackupRepository;
+import org.apache.solr.core.SolrSnapshotMetaDataManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,6 +64,10 @@ public class RestoreCore implements Callable<Boolean> {
     String restoreIndexName = "restore." + dateFormat.format(new Date());
     String restoreIndexPath = core.getDataDir() + restoreIndexName;
 
+    String indexDirPath = core.getIndexDir();
+    SolrSnapshotMetaDataManager snapshotsMgr = core.getSnapshotMetaDataManager();
+    boolean snapshotsExist = snapshotsMgr.snapshotsExistInIndexDir(indexDirPath);
+
     Directory restoreIndexDir = null;
     Directory indexDir = null;
     try {
@@ -71,7 +76,7 @@ public class RestoreCore implements Callable<Boolean> {
           DirectoryFactory.DirContext.DEFAULT, core.getSolrConfig().indexConfig.lockType);
 
       //Prefer local copy.
-      indexDir = core.getDirectoryFactory().get(core.getIndexDir(),
+      indexDir = core.getDirectoryFactory().get(indexDirPath,
           DirectoryFactory.DirContext.DEFAULT, core.getSolrConfig().indexConfig.lockType);
 
       //Move all files from backupDir to restoreIndexDir
@@ -130,7 +135,12 @@ public class RestoreCore implements Callable<Boolean> {
       }
       if (success) {
         core.getDirectoryFactory().doneWithDirectory(indexDir);
-        core.getDirectoryFactory().remove(indexDir);
+        // Delete the old index directory only if no snapshot exists in that directory.
+        if (!snapshotsExist) {
+          core.getDirectoryFactory().remove(indexDir);
+        } else {
+          snapshotsMgr.deleteNonSnapshotIndexFiles(indexDir);
+        }
       }
 
       return true;

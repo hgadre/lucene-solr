@@ -896,8 +896,8 @@ public class TestReplicationHandler extends SolrTestCaseJ4 {
       CachingDirectoryFactory dirFactory = (CachingDirectoryFactory) core.getDirectoryFactory();
       synchronized (dirFactory) {
         Set<String> livePaths = dirFactory.getLivePaths();
-        // one for data, one for hte index under data
-        assertEquals(livePaths.toString(), 2, livePaths.size());
+        // one for data, one for hte index under data and one for the snapshot metadata.
+        assertEquals(livePaths.toString(), 3, livePaths.size());
         // :TODO: assert that one of the paths is a subpath of hte other
       }
       if (dirFactory instanceof StandardDirectoryFactory) {
