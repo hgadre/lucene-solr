@@ -339,7 +339,7 @@ enum CoreAdminOperation implements CoreAdminOp {
           if (isIndexInfoNeeded) {
             RefCounted<SolrIndexSearcher> searcher = core.getSearcher();
             try {
-              SimpleOrderedMap<Object> indexInfo = LukeRequestHandler.getIndexInfo(searcher.get().getIndexReader());
+              SimpleOrderedMap<Object> indexInfo = LukeRequestHandler.getIndexInfo(core, searcher.get().getIndexReader());
               long size = getIndexSize(core);
               indexInfo.add("sizeInBytes", size);
               indexInfo.add("size", NumberUtils.readableSize(size));

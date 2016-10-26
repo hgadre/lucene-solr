@@ -72,6 +72,7 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.Base64;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
@@ -127,6 +128,7 @@ public class LukeRequestHandler extends RequestHandlerBase
   public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception
   {
     IndexSchema schema = req.getSchema();
+    SolrCore core = req.getCore();
     SolrIndexSearcher searcher = req.getSearcher();
     DirectoryReader reader = searcher.getIndexReader();
     SolrParams params = req.getParams();
@@ -134,7 +136,7 @@ public class LukeRequestHandler extends RequestHandlerBase
 
     // If no doc is given, show all fields and top terms
 
-    rsp.add("index", getIndexInfo(reader));
+    rsp.add("index", getIndexInfo(core, reader));
 
     if(ShowStyle.INDEX==style) {
       return; // that's all we need
@@ -566,7 +568,7 @@ public class LukeRequestHandler extends RequestHandlerBase
   // This method just gets the top-most level of information. This was conflated with getting detailed info
   // for *all* the fields, called from CoreAdminHandler etc.
 
-  public static SimpleOrderedMap<Object> getIndexInfo(DirectoryReader reader) throws IOException {
+  public static SimpleOrderedMap<Object> getIndexInfo(SolrCore core, DirectoryReader reader) throws IOException {
     Directory dir = reader.directory();
     SimpleOrderedMap<Object> indexInfo = new SimpleOrderedMap<>();
 
@@ -580,7 +582,11 @@ public class LukeRequestHandler extends RequestHandlerBase
     indexInfo.add("current", reader.isCurrent() );
     indexInfo.add("hasDeletions", reader.hasDeletions() );
     indexInfo.add("directory", dir );
-    IndexCommit indexCommit = reader.getIndexCommit();
+
+    IndexCommit indexCommit = core.getDeletionPolicy().getLatestCommit();
+    if (indexCommit == null) {
+      indexCommit = reader.getIndexCommit();
+    }
     String segmentsFileName = indexCommit.getSegmentsFileName();
     indexInfo.add("segmentsFile", segmentsFileName);
     indexInfo.add("segmentsFileSizeInBytes", getFileLength(indexCommit.getDirectory(), segmentsFileName));
