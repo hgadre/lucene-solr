@@ -153,7 +153,6 @@ public class SolrCLI {
 
       int toolExitStatus = 0;
       try {
-        setBasicAuth();
         runImpl(cli);
       } catch (Exception exc) {
         // since this is a CLI, spare the user the stacktrace
@@ -261,20 +260,6 @@ public class SolrCLI {
   }
 
   public static CommandLine parseCmdLine(String[] args, Option[] toolOptions) throws Exception {
-
-    String builderClassName = System.getProperty("solr.authentication.httpclient.builder");
-    if (builderClassName!=null) {
-      try {
-        Class c = Class.forName(builderClassName);
-        SolrHttpClientBuilder builder = (SolrHttpClientBuilder)c.newInstance();
-        HttpClientUtil.setHttpClientBuilder(builder);
-        log.info("Set SolrHttpClientBuilder from: "+builderClassName);
-      } catch (Exception ex) {
-        log.error(ex.getMessage());
-        throw new RuntimeException("Error during loading of builder '"+builderClassName+"'.", ex);
-      }
-    }
-
     // the parser doesn't like -D props
     List<String> toolArgList = new ArrayList<String>();
     List<String> dashDList = new ArrayList<String>();
@@ -531,25 +516,6 @@ public class SolrCLI {
     return classes;
   }
 
-  /**
-   * Inspects system property basicauth and enables authentication for HttpClient
-   * @throws Exception if the basicauth SysProp has wrong format
-   */
-  protected static void setBasicAuth() throws Exception {
-    String basicauth = System.getProperty("basicauth", null);
-    if (basicauth != null) {
-      List<String> ss = StrUtils.splitSmart(basicauth, ':');
-      if (ss.size() != 2)
-        throw new Exception("Please provide 'basicauth' in the 'user:password' format");
-
-      HttpClientUtil.addRequestInterceptor((httpRequest, httpContext) -> {
-        String pair = ss.get(0) + ":" + ss.get(1);
-        byte[] encodedBytes = Base64.encodeBase64(pair.getBytes(UTF_8));
-        httpRequest.addHeader(new BasicHeader("Authorization", "Basic " + new String(encodedBytes, UTF_8)));
-      });
-    }
-  }
-  
   /**
    * Determine if a request to Solr failed due to a communication error,
    * which is generally retry-able. 
@@ -3341,7 +3307,6 @@ public class SolrCLI {
 
       int toolExitStatus = 0;
       try {
-        setBasicAuth();
         toolExitStatus = runAssert(cli);
       } catch (Exception exc) {
         // since this is a CLI, spare the user the stacktrace
