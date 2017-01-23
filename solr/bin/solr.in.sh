@@ -121,6 +121,7 @@
 
 # Settings for authentication
 #SOLR_AUTHENTICATION_CLIENT_BUILDER=
+#SOLR_AUTH_TYPE="basic"
 #SOLR_AUTHENTICATION_OPTS="-Dbasicauth=solr:SolrRocks"
 
 # Settings for ZK ACL
