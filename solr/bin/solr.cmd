@@ -122,7 +122,16 @@ IF NOT DEFINED SOLR_AUTH_TYPE (
   IF DEFINED SOLR_AUTHENTICATION_OPTS (
     echo WARNING: SOLR_AUTHENTICATION_OPTS variable configured without associated SOLR_AUTH_TYPE variable
     echo          Please configure SOLR_AUTH_TYPE variable with the authentication type to be used.
-    echo          Currently supported authentication types - kerberos, basic
+    echo          Currently supported authentication types are [kerberos, basic]
+  )
+)
+
+IF DEFINED SOLR_AUTH_TYPE (
+  IF DEFINED SOLR_AUTHENTICATION_CLIENT_BUILDER (
+    echo WARNING: SOLR_AUTHENTICATION_CLIENT_BUILDER and SOLR_AUTH_TYPE variables are configured together
+    echo          Use SOLR_AUTH_TYPE variable to configure authentication type to be used
+    echo          Currently supported authentication types are [kerberos, basic]
+    echo          The value of SOLR_AUTHENTICATION_CLIENT_BUILDER configuration variable will be ignored
   )
 )
 
