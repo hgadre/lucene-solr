@@ -89,7 +89,6 @@
         <artifactId>maven-assembly-plugin</artifactId>
         <version>3.1.0</version>
         <configuration>
-          <finalName>${artifactId}</finalName>
           <descriptors>
             <descriptor>src/assembly/dist.xml</descriptor>
           </descriptors>
